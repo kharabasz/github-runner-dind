@@ -1,0 +1,81 @@
+# Ephemeral GitHub Actions runners, each paired with its own Docker-in-Docker daemon.
+#
+#   cp runner.env.example runner.env    # set RUNNER_REPOSITORY, GITHUB_TOKEN, RUNNER_LABELS
+#   docker compose up -d
+#
+# Each runner shares its dind sidecar's network namespace, so containers a job starts with
+# `docker run --publish 127.0.0.1::<port>` are reachable from the job on 127.0.0.1. Jobs only
+# see their own dind daemon, never the host's Docker. Add a pair by copying runner-2/dind-2
+# with the next number and its volumes. See README.md.
+name: ${RUNNERS_PROJECT:-github-runners}
+
+x-dind: &dind
+  # Pinned by digest (Dependabot keeps it current); keep in step with the image's Docker CLI.
+  image: docker:29.8.2-dind@sha256:1e08cdb63405ca788aea94ef35b792d1e299607c667d33d7bcbcae1fd2611ced
+  # Required by Docker-in-Docker. See README.md "Isolation model" for what this does and doesn't protect.
+  privileged: true
+  restart: always
+  environment:
+    DOCKER_TLS_CERTDIR: /certs
+  cpus: ${RUNNER_CPUS:-4}
+  mem_limit: ${RUNNER_MEMORY:-6g}
+  healthcheck:
+    test: ["CMD", "docker", "info"]
+    interval: 5s
+    timeout: 5s
+    retries: 30
+
+x-runner: &runner
+  image: ${RUNNER_IMAGE:-ghcr.io/kharabasz/github-runner-dind:latest}
+  restart: always
+  env_file: runner.env
+  stop_grace_period: 30s
+
+services:
+  dind-1:
+    <<: *dind
+    volumes:
+      - dind-1-data:/var/lib/docker
+      - dind-1-certs:/certs
+
+  runner-1:
+    <<: *runner
+    network_mode: service:dind-1
+    depends_on:
+      dind-1:
+        condition: service_healthy
+    environment:
+      RUNNER_NAME_PREFIX: ${RUNNER_NAME_PREFIX:-runner}-1
+    volumes:
+      - dind-1-certs:/certs:ro
+      - runner-1-nuget:/home/runner/.nuget
+      - runner-1-npm:/home/runner/.npm
+
+  dind-2:
+    <<: *dind
+    volumes:
+      - dind-2-data:/var/lib/docker
+      - dind-2-certs:/certs
+
+  runner-2:
+    <<: *runner
+    network_mode: service:dind-2
+    depends_on:
+      dind-2:
+        condition: service_healthy
+    environment:
+      RUNNER_NAME_PREFIX: ${RUNNER_NAME_PREFIX:-runner}-2
+    volumes:
+      - dind-2-certs:/certs:ro
+      - runner-2-nuget:/home/runner/.nuget
+      - runner-2-npm:/home/runner/.npm
+
+volumes:
+  dind-1-data:
+  dind-1-certs:
+  runner-1-nuget:
+  runner-1-npm:
+  dind-2-data:
+  dind-2-certs:
+  runner-2-nuget:
+  runner-2-npm:

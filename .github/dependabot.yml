@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # Base image digest in the Dockerfile.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+  # The Docker-in-Docker sidecar image digest in compose.yaml.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+  # Actions used by the workflows (pinned by commit SHA).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

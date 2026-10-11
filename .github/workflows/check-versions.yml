@@ -1,0 +1,49 @@
+name: check-versions
+
+on:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04 # GitHub-hosted only.
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare pinned tool versions with upstream
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/check-versions.sh > report.md
+          cat report.md
+          echo "outdated=$(tail -1 report.md | cut -d= -f2)" >> "$GITHUB_OUTPUT"
+          sed -i '$d' report.md
+
+      - name: Open or update the tracking issue
+        if: steps.check.outputs.outdated == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Pinned tool updates available"
+          {
+            echo "The weekly version check found newer upstream releases than the versions pinned in the \`Dockerfile\`."
+            echo "Update the version **and its checksum** (see the comments next to each \`ARG\`), then let CI rebuild and scan the image."
+            echo
+            cat report.md
+          } > body.md
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --body-file body.md
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file body.md
+          fi
