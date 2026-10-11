@@ -50,6 +50,8 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates curl git gnupg jq tar unzip xz-utils \
+      # IANA time zone data: .NET resolves zones such as Europe/London through it.
+      tzdata \
       libicu74 libssl3t64 libstdc++6 zlib1g libgcc-s1 \
  && rm -rf /var/lib/apt/lists/*
 
