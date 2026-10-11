@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 #
 # Ephemeral self-hosted GitHub Actions runner, designed to run next to a Docker-in-Docker
-# sidecar (see compose.yaml). Every tool is pinned to an exact version and verified against
+# sidecar (compose.yaml) and to be started by the host-side supervisor with a single-use
+# just-in-time runner config (supervisor/runner-supervisor.ps1). The image holds no secrets. Every tool is pinned to an exact version and verified against
 # its published checksum or signed package repository. Bump versions in this file only,
 # through a reviewed pull request; see README.md "Updating".
 
@@ -102,26 +103,27 @@ RUN curl -fsSL -o /tmp/dotnet.tar.gz "https://builds.dotnet.microsoft.com/dotnet
 RUN npx --yes "playwright@${PLAYWRIGHT_VERSION}" install --with-deps chromium \
  && rm -rf /root/.npm /var/lib/apt/lists/*
 
-# The runner, unpacked read-only; entrypoint.sh copies it to a fresh directory for every job.
-# It runs JavaScript actions with its bundled Node.js binaries only, so the npm and corepack
+# The runner. Every job gets a brand-new container (docker run --rm), so it is unpacked straight
+# into the runner user's home. It runs JavaScript actions with its bundled Node.js binaries only, so the npm and corepack
 # copies bundled with them (never used, and carrying vulnerable dependencies) are removed.
 RUN useradd --create-home --uid 1001 --shell /bin/bash runner \
  && curl -fsSL -o /tmp/runner.tar.gz "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz" \
  && echo "${RUNNER_SHA256}  /tmp/runner.tar.gz" | sha256sum -c - \
- && mkdir -p /opt/actions-runner \
- && tar -xzf /tmp/runner.tar.gz -C /opt/actions-runner \
- && /opt/actions-runner/bin/installdependencies.sh \
- && rm -rf /opt/actions-runner/externals/node*/lib/node_modules/npm \
-           /opt/actions-runner/externals/node*/lib/node_modules/corepack \
-           /opt/actions-runner/externals/node*/bin/npm \
-           /opt/actions-runner/externals/node*/bin/npx \
-           /opt/actions-runner/externals/node*/bin/corepack \
+ && mkdir -p /home/runner/actions-runner \
+ && tar -xzf /tmp/runner.tar.gz -C /home/runner/actions-runner \
+ && /home/runner/actions-runner/bin/installdependencies.sh \
+ && rm -rf /home/runner/actions-runner/externals/node*/lib/node_modules/npm \
+           /home/runner/actions-runner/externals/node*/lib/node_modules/corepack \
+           /home/runner/actions-runner/externals/node*/bin/npm \
+           /home/runner/actions-runner/externals/node*/bin/npx \
+           /home/runner/actions-runner/externals/node*/bin/corepack \
  && rm -rf /tmp/runner.tar.gz /var/lib/apt/lists/* \
- && mkdir -p /ms-playwright && chown -R runner:runner /ms-playwright
+ && mkdir -p /ms-playwright /home/runner/.nuget /home/runner/.npm \
+ && chown -R runner:runner /home/runner /ms-playwright
 
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint.sh
 
-# The entrypoint starts as root only to read the registration credential, which job steps must
-# never see; it runs the runner itself as the unprivileged `runner` user.
+# No secrets and no root at run time: the supervisor passes a single-use JIT runner config.
+USER runner
 WORKDIR /home/runner
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

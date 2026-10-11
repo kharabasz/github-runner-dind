@@ -17,4 +17,6 @@ Only the latest image built from `main` is supported. Images are rebuilt weekly,
 
 ## Using the runners safely
 
-Read the [isolation model](README.md#isolation-model). In short: the Docker-in-Docker sidecar is privileged, so only run trusted code on these runners. Attach them only to private repositories you control, never to a public repository, and scope the registration token to a single repository.
+Read the [isolation model](README.md#isolation-model). In short:
+- The Docker-in-Docker sidecar is privileged, so only run trusted code on these runners. Attach them only to private repositories you control, never to a public repository.
+- The credential that can create runners stays with the host-side supervisor. Prefer a GitHub App installed only on the repository, with *Administration: write* and nothing else. Containers only receive single-use JIT runner configs.

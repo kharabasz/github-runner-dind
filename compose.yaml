@@ -1,12 +1,11 @@
-# Ephemeral GitHub Actions runners, each paired with its own Docker-in-Docker daemon.
-#
-#   cp runner.env.example runner.env    # set RUNNER_REPOSITORY, GITHUB_TOKEN, RUNNER_LABELS
-#   docker compose up -d
-#
-# Each runner shares its dind sidecar's network namespace, so containers a job starts with
-# `docker run --publish 127.0.0.1::<port>` are reachable from the job on 127.0.0.1. Jobs only
-# see their own dind daemon, never the host's Docker. Add a pair by copying runner-2/dind-2
-# with the next number and its volumes. See README.md.
+# Docker-in-Docker sidecars for the runner slots. Runner containers are not defined here:
+# supervisor/runner-supervisor.ps1 starts a brand-new one per job for each slot, with a
+# single-use JIT config, attached to slot N's sidecar:
+#   --network container:<project>-dind-N-1   (shares its network namespace)
+#   -v <project>_dind-N-certs:/certs:ro      (TLS client certificates)
+# so containers a job starts with `docker run --publish 127.0.0.1::<port>` are reachable from
+# the job on 127.0.0.1, and jobs only ever see their own dind daemon, never the host's Docker.
+# Add a slot by copying dind-2 with the next number and its volumes.
 name: ${RUNNERS_PROJECT:-github-runners}
 
 x-dind: &dind
@@ -25,12 +24,6 @@ x-dind: &dind
     timeout: 5s
     retries: 30
 
-x-runner: &runner
-  image: ${RUNNER_IMAGE:-ghcr.io/kharabasz/github-runner-dind:latest}
-  restart: always
-  env_file: runner.env
-  stop_grace_period: 30s
-
 services:
   dind-1:
     <<: *dind
@@ -38,44 +31,14 @@ services:
       - dind-1-data:/var/lib/docker
       - dind-1-certs:/certs
 
-  runner-1:
-    <<: *runner
-    network_mode: service:dind-1
-    depends_on:
-      dind-1:
-        condition: service_healthy
-    environment:
-      RUNNER_NAME_PREFIX: ${RUNNER_NAME_PREFIX:-runner}-1
-    volumes:
-      - dind-1-certs:/certs:ro
-      - runner-1-nuget:/home/runner/.nuget
-      - runner-1-npm:/home/runner/.npm
-
   dind-2:
     <<: *dind
     volumes:
       - dind-2-data:/var/lib/docker
       - dind-2-certs:/certs
 
-  runner-2:
-    <<: *runner
-    network_mode: service:dind-2
-    depends_on:
-      dind-2:
-        condition: service_healthy
-    environment:
-      RUNNER_NAME_PREFIX: ${RUNNER_NAME_PREFIX:-runner}-2
-    volumes:
-      - dind-2-certs:/certs:ro
-      - runner-2-nuget:/home/runner/.nuget
-      - runner-2-npm:/home/runner/.npm
-
 volumes:
   dind-1-data:
   dind-1-certs:
-  runner-1-nuget:
-  runner-1-npm:
   dind-2-data:
   dind-2-certs:
-  runner-2-nuget:
-  runner-2-npm:
