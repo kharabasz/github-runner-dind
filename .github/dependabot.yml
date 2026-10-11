@@ -5,6 +5,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # Track the 24.04 digest only; moving to a new Ubuntu release changes package names and
+      # is done deliberately in a reviewed PR.
+      - dependency-name: ubuntu
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
   # The Docker-in-Docker sidecar image digest in compose.yaml.
   - package-ecosystem: docker-compose
     directory: /
