@@ -61,6 +61,8 @@ jobs:
           scanners: vuln
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          # Time-boxed, path-scoped exceptions for issues with no fixed upstream release yet.
+          trivyignores: .trivyignore.yaml
           exit-code: "1"
           format: table
 

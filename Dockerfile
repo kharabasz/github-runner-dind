@@ -17,11 +17,13 @@ ARG POWERSHELL_SHA256=ddbc4a2d113bbd46d283cfedcbcd117a70caefd7673f41f2b4e0000bad
 # Node.js: https://nodejs.org/dist/v<version>/SHASUMS256.txt
 ARG NODE_VERSION=24.21.0
 ARG NODE_SHA256=fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6
+# npm: upgraded from the version bundled with Node.js to pick up fixes in its dependencies.
+ARG NPM_VERSION=11.21.0
 # .NET SDK: https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/10.0/releases.json (SHA-512)
 ARG DOTNET_SDK_VERSION=10.0.401
 ARG DOTNET_SDK_SHA512=51c8b999af9e8dd9998c9edc5944e19a90788862068acd38694e098889054ce8c23d4f0c5cccfa16bf187d044562359e5ee69a9f8ad0bbe913ba90311fbce25b
 # Docker CLI (client only) from Docker's signed apt repository; keep in step with the dind sidecar.
-ARG DOCKER_CLI_VERSION=29.8.2
+ARG DOCKER_CLI_VERSION=29.9.0
 ARG DOCKER_REPO_SIGNING_FPR=9DC858229FC7DD38854AE2D88D81803C0EBFCD88
 # Docker Compose plugin: https://github.com/docker/compose/releases (docker-compose-linux-x86_64.sha256)
 ARG COMPOSE_VERSION=5.6.0
@@ -84,7 +86,9 @@ RUN curl -fsSL -o /tmp/node.tar.xz "https://nodejs.org/dist/v${NODE_VERSION}/nod
  && ln -s /opt/node/bin/node /usr/local/bin/node \
  && ln -s /opt/node/bin/npm /usr/local/bin/npm \
  && ln -s /opt/node/bin/npx /usr/local/bin/npx \
- && rm /tmp/node.tar.xz
+ && rm /tmp/node.tar.xz \
+ && npm install --global --no-fund --no-audit "npm@${NPM_VERSION}" \
+ && rm -rf /root/.npm
 
 # .NET SDK.
 RUN curl -fsSL -o /tmp/dotnet.tar.gz "https://builds.dotnet.microsoft.com/dotnet/Sdk/${DOTNET_SDK_VERSION}/dotnet-sdk-${DOTNET_SDK_VERSION}-linux-x64.tar.gz" \
@@ -99,12 +103,19 @@ RUN npx --yes "playwright@${PLAYWRIGHT_VERSION}" install --with-deps chromium \
  && rm -rf /root/.npm /var/lib/apt/lists/*
 
 # The runner, unpacked read-only; entrypoint.sh copies it to a fresh directory for every job.
+# It runs JavaScript actions with its bundled Node.js binaries only, so the npm and corepack
+# copies bundled with them (never used, and carrying vulnerable dependencies) are removed.
 RUN useradd --create-home --uid 1001 --shell /bin/bash runner \
  && curl -fsSL -o /tmp/runner.tar.gz "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz" \
  && echo "${RUNNER_SHA256}  /tmp/runner.tar.gz" | sha256sum -c - \
  && mkdir -p /opt/actions-runner \
  && tar -xzf /tmp/runner.tar.gz -C /opt/actions-runner \
  && /opt/actions-runner/bin/installdependencies.sh \
+ && rm -rf /opt/actions-runner/externals/node*/lib/node_modules/npm \
+           /opt/actions-runner/externals/node*/lib/node_modules/corepack \
+           /opt/actions-runner/externals/node*/bin/npm \
+           /opt/actions-runner/externals/node*/bin/npx \
+           /opt/actions-runner/externals/node*/bin/corepack \
  && rm -rf /tmp/runner.tar.gz /var/lib/apt/lists/* \
  && mkdir -p /ms-playwright && chown -R runner:runner /ms-playwright
 

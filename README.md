@@ -77,6 +77,7 @@ Stronger isolation needs a different runtime, such as Sysbox, rootless dind on a
 
 - **Base image, dind image and GitHub Actions:** Dependabot opens pull requests.
 - **Tools pinned by version** (`ARG …_VERSION` in the `Dockerfile`): the weekly `check-versions` workflow opens or updates a *Pinned tool updates available* issue. Bump the version **and its checksum**; each `ARG` has a comment saying where the checksum comes from. Keep `DOCKER_CLI_VERSION` in step with the dind image, and `PLAYWRIGHT_VERSION` in step with the consuming projects' `@playwright/test`.
+- **Vulnerabilities with no fixed upstream release** go in `.trivyignore.yaml`. Each entry is scoped to the exact file, has a statement explaining why it's acceptable for now, and has an expiry date (at most about 30 days ahead), after which the scan fails again. Delete an entry as soon as a fixed release can be pinned.
 - **The runner never auto-updates** (`--disableupdate`). GitHub stops accepting runner versions some time after a new release, so keep `RUNNER_VERSION` current.
 
 Every change is built, scanned and only pushed from `main`. Consumers then bump their pinned digest.
