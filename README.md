@@ -56,12 +56,14 @@ Register a scheduled task that starts at logon (Docker Desktop must be running) 
 
 ```powershell
 $script = 'C:\path\to\github-runner-dind\supervisor\runner-supervisor.ps1'
-$arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$script`" -Repository owner/repo -Labels ci -Image ghcr.io/kharabasz/github-runner-dind@sha256:<digest>"
+$arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$script`" -Repository owner/repo -Labels ci -Image ghcr.io/kharabasz/github-runner-dind@sha256:<digest>"
 Register-ScheduledTask -TaskName 'GitHub runner supervisor' `
   -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arguments) `
   -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME) `
   -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0 -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew)
 ```
+
+`-WindowStyle Hidden` keeps the task's console window from being closed by accident; closing it stops the supervisor and its runners. Only one supervisor (or `-Cleanup`) can run per `-Project` at a time: a second one refuses to start, because two would remove each other's runners as leftovers. Stop the task before running the supervisor by hand.
 
 Stopping the task kills the supervisor without its tidy-up. That's fine: the next start removes leftover containers and registrations. To tidy up by hand, run it with `-Cleanup`.
 

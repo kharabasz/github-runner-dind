@@ -210,6 +210,16 @@ function Stop-AllRunners($State) {
 
 # --- Main ---------------------------------------------------------------------------------
 
+# One supervisor (or cleanup) per project: two would remove each other's runner containers as
+# leftovers and fight over the slots.
+$instanceLock = New-Object System.Threading.Mutex($false, "Global\github-runner-supervisor-$Project")
+$haveLock = $false
+try { $haveLock = $instanceLock.WaitOne(0) }
+catch [System.Threading.AbandonedMutexException] { $haveLock = $true } # previous holder was killed
+if (-not $haveLock) {
+    throw "Another runner supervisor is already running for project '$Project' (for example its scheduled task). Stop it first."
+}
+
 if ($Cleanup) {
     Remove-StaleRunners
     Write-Log 'Cleanup complete.'
