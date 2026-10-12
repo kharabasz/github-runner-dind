@@ -227,15 +227,29 @@ if ($Cleanup) {
 }
 
 Write-Log "Supervising $Slots runner slot(s) for $Repository (labels: $(@('self-hosted', 'linux', 'x64') + $Labels -join ', '); image: $Image; auth: $Auth)."
-& docker compose --file $ComposeFile --project-name $Project up --detach --wait
-if ($LASTEXITCODE -ne 0) { throw 'Starting the Docker-in-Docker sidecars failed.' }
-Remove-StaleRunners
+# Docker Desktop, the network or the GitHub CLI may still be starting (for example right after
+# logon, when the scheduled task starts): wait and retry instead of exiting, because Task
+# Scheduler does not restart a task whose script exits with an error.
+while ($true) {
+    try {
+        & docker compose --file $ComposeFile --project-name $Project up --detach --wait
+        if ($LASTEXITCODE -ne 0) { throw 'starting the Docker-in-Docker sidecars failed' }
+        Remove-StaleRunners
+        break
+    }
+    catch {
+        if ($Once) { throw }
+        Write-Log "Not ready yet ($($_.Exception.Message)); retrying in 30s."
+        Start-Sleep -Seconds 30
+    }
+}
 
 $state = @{}
 foreach ($slot in 1..$Slots) { $state[$slot] = @{ Runner = $null; Failures = 0; NotBefore = [DateTime]::MinValue } }
 
 try {
     while ($true) {
+        try {
         foreach ($slot in 1..$Slots) {
             $entry = $state[$slot]
             if ($entry.Runner) {
@@ -268,6 +282,14 @@ try {
                 $entry.NotBefore = (Get-Date).AddSeconds($delay)
                 Write-Log "Slot ${slot}: could not start a runner ($($_.Exception.Message)); retrying in ${delay}s."
             }
+        }
+        }
+        catch {
+            # For example Docker Desktop restarting: keep supervising rather than exiting.
+            if ($Once) { throw }
+            Write-Log "Supervision error ($($_.Exception.Message)); retrying in 30s."
+            Start-Sleep -Seconds 30
+            continue
         }
         if ($Once) { break }
         Start-Sleep -Seconds $PollSeconds
